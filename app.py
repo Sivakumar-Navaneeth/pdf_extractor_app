@@ -4,11 +4,10 @@ from transformers import BitsAndBytesConfig
 from PIL import Image
 import torch
 import os
-import base64
 import io
 
 # Base models directory
-MODELS_PATH = r"LegendsLair/models"
+MODELS_PATH = r"/Users/navaneethsivakumar/LegendsLair/models"
 
 # Streamlit app configuration
 st.set_page_config(
@@ -26,7 +25,7 @@ def load_model(model_name: str):
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",  # or 'fp4'
+        bnb_4bit_quant_type="fp4", # "nf4",  # or 'fp4'
         bnb_4bit_compute_dtype=torch.bfloat16,
     )
 
@@ -45,15 +44,17 @@ def load_model(model_name: str):
         processor.save_pretrained(model_path)
         model.save_pretrained(model_path)
         st.success(f"Model downloaded and saved to {model_path}")
-
-    processor = AutoProcessor.from_pretrained(model_path, use_fast=False, trust_remote_code=True)
-    model = Gemma3ForConditionalGeneration.from_pretrained(
-        model_path,
-        quantization_config=bnb_config,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
-        trust_remote_code=True
-    ).eval()
+    else:
+        # If the model path exists, load the model and processor from local files
+        st.info(f"Loading model from local path: {model_path}")
+        processor = AutoProcessor.from_pretrained(model_path, use_fast=False, trust_remote_code=True)
+        model = Gemma3ForConditionalGeneration.from_pretrained(
+            model_path,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True
+        ).eval()
     return processor, model
 
 # Generate text from image using model
@@ -137,7 +138,7 @@ with col2:
 # Display image and process OCR
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
     if extract_btn:
         with st.spinner("Extracting text from image..."):

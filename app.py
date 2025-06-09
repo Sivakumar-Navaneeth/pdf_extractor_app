@@ -1,13 +1,14 @@
 import streamlit as st
-from transformers import AutoProcessor, Gemma3ForConditionalGeneration
-from transformers import BitsAndBytesConfig
+from transformers import pipeline
+from torchvision import transforms
+# from transformers import BitsAndBytesConfig
 from PIL import Image
 import torch
 import os
 import io
 
 # Base models directory
-MODELS_PATH = r"/Users/navaneethsivakumar/LegendsLair/models"
+MODELS_PATH = os.path.join(os.path.expanduser("~"), "LegendsLair", "models")
 
 # Streamlit app configuration
 st.set_page_config(
@@ -18,59 +19,43 @@ st.set_page_config(
 )
 
 # Load model and processor from a specified subdirectory inside MODELS_PATH
-@st.cache_resource
+# @st.cache_resource
 def load_model(model_name: str):
     model_path = os.path.join(MODELS_PATH, model_name)
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="fp4", # "nf4",  # or 'fp4'
-        bnb_4bit_compute_dtype=torch.bfloat16,
+    if not os.path.exists(model_path):
+        raise ValueError(f"Model not found at {model_path}. Please ensure the model is downloaded.")
+    
+    from transformers import GemmaTokenizer
+    tokenizer = GemmaTokenizer.from_pretrained(model_path)
+    
+    pipe = pipeline(
+        "image-text-to-text",
+        model=model_path,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        torch_dtype=torch.bfloat16,
+        tokenizer=tokenizer
     )
 
-    if not os.path.exists(model_path):
-        # If the model path does not exist, load the model from Hugging Face
-        # Save the model locally for future use
-        st.warning(f"Model not found at {model_path}. Downloading from Hugging Face...")
-        processor = AutoProcessor.from_pretrained(model_name, use_fast=False,)
-        model = Gemma3ForConditionalGeneration.from_pretrained(
-            model_name,
-            quantization_config=bnb_config,
-            device_map="auto",
-            torch_dtype=torch.bfloat16,
-        ).eval()
-        os.makedirs(model_path, exist_ok=True)
-        processor.save_pretrained(model_path)
-        model.save_pretrained(model_path)
-        st.success(f"Model downloaded and saved to {model_path}")
-    else:
-        # If the model path exists, load the model and processor from local files
-        st.info(f"Loading model from local path: {model_path}")
-        processor = AutoProcessor.from_pretrained(model_path, use_fast=False, trust_remote_code=True)
-        model = Gemma3ForConditionalGeneration.from_pretrained(
-            model_path,
-            quantization_config=bnb_config,
-            device_map="auto",
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True
-        ).eval()
-    return processor, model
+    return pipe
 
 # Generate text from image using model
 def generate_response(image_bytes, prompt, model_name="google/gemma-3-4b-it"):
-    processor, model = load_model(model_name)
+    pipe = load_model(model_name)
 
     try:
         image = Image.open(uploaded_file).convert("RGB")
     except Exception as e:
         raise ValueError("Uploaded file is not a valid image.") from e
 
-    # Convert image to bytes for model
-    image_bytes = io.BytesIO()
-    image.save(image_bytes, format="JPEG")
-    image_bytes = image_bytes.getvalue()
-    image_bytes = torch.tensor(image_bytes).unsqueeze(0).to(model.device, dtype=torch.bfloat16)
+    # # Convert image to bytes for model
+    # image_bytes = io.BytesIO()
+    # image.save(image_bytes, format="JPEG")
+    # image_bytes = image_bytes.getvalue()
+    # image_bytes = torch.tensor(image_bytes).unsqueeze(0)
+
+    # Assuming `image` is a PIL.Image
+    transform = transforms.ToTensor()  # Converts to float tensor [0,1]
+    # image_tensor = transform(image).unsqueeze(0)  # Add batch dimension
 
     messages = [
         {
@@ -80,26 +65,30 @@ def generate_response(image_bytes, prompt, model_name="google/gemma-3-4b-it"):
         {
             "role": "user",
             "content": [
-                {"type": "image", "image": image_bytes},
+                {"type": "image", "image": image},
                 {"type": "text", "text": prompt}
             ]
         }
     ]
 
-    inputs = processor.apply_chat_template(
-        messages,
-        add_generation_prompt=True,
-        tokenize=True,
-        return_tensors="pt"
-    ).to(model.device, dtype=torch.bfloat16)
+    output = pipe(text=messages, max_new_tokens=512, do_sample=False)
 
-    input_len = inputs["input_ids"].shape[-1]
+    return output[0]["generated_text"][-1]["content"]
 
-    with torch.inference_mode():
-        output = model.generate(**inputs, max_new_tokens=512, do_sample=False)
-        output = output[0][input_len:]
+    # inputs = processor.apply_chat_template(
+    #     messages,
+    #     add_generation_prompt=True,
+    #     tokenize=True,
+    #     return_tensors="pt"
+    # ).to(model.device, dtype=torch.bfloat16)
 
-    return processor.decode(output, skip_special_tokens=True)
+    # input_len = inputs["input_ids"].shape[-1]
+
+    # with torch.inference_mode():
+    #     output = model.generate(**inputs, max_new_tokens=512, do_sample=False)
+    #     output = output[0][input_len:]
+
+    # return processor.decode(output, skip_special_tokens=True)
 
 # # App title with logo
 # with open("assets/gemma3.png", "rb") as f:

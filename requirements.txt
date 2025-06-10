@@ -1,4 +1,16 @@
-streamlit>=1.28.0
-PyMuPDF>=1.23.0
-transformers>=4.35.0
-sentencepiece==0.2.0
+# Core Transformers and PyTorch for Apple Silicon
+transformers>=4.39.0
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0
+
+# Optional helpers 
+accelerate>=0.27.0
+numpy
+Pillow
+scikit-learn
+streamlit>=1.45.1
+
+# For PDF or OCR apps
+PyMuPDF  
+pytesseract  

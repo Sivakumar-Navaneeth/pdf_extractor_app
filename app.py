@@ -25,12 +25,20 @@ def load_model(model_name: str):
 
     tokenizer = GemmaTokenizer.from_pretrained(model_path)
 
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
+
+    if device == "mps":
+        print("Using Apple Silicon GPU (MPS) for acceleration.")
+    else:
+        print("Using CPU for processing.")
+
+    # Load the image-text-to-text pipeline
     pipe = pipeline(
         "image-text-to-text",
         model=model_path,
-        device=0 if torch.cuda.is_available() else -1,
+        device = device,
         torch_dtype=torch.bfloat16,
-        tokenizer=tokenizer
+        # tokenizer=tokenizer
     )
 
     return pipe
